@@ -1,0 +1,134 @@
+#!/bin/bash
+## turdle: replace your wordle results with other emojis of your choosing
+## version 1.0 (the one and only)
+
+## eventually: make a keyboard combo to replace clipboard
+
+getClipboard() {
+	# one may specify '--clipboard' to paste wordle info from clipboard instead of needing to put it in a file
+	case "$XDG_SESSION_TYPE" in
+		# determine what commands to use for clipboard manipulation
+		"wayland") cpbdPull="wl-paste" && cpbdPush="wl-copy" ;;
+		*) cpbdPull="xclip -o -selection clipboard" && cpbdPush="xclip -selection clipboard" ;; 
+	esac
+
+	# make sure the proper utility exists
+	# strip all after first word in cpbdPull to make sure just the executable is being checked for
+	if ! command -v "${cpbdPull%% *}" &>/dev/null; then 
+		printf "clipboard error: no tool exists to copy or paste on your system that i can use!\nIf you are using X11, please install xclip. If you are on wayland, install wl-clipboard.\n"
+		exit 1
+	fi
+
+	case "$1" in
+		"pull") clippedTurd="$(eval $cpbdPull)" ;;	
+		"push") "$cpbdPush" "$clippedTurd" ;;
+		*) echo "error: getClipboard: unknown argument $1" && exit 1 ;;
+	esac
+}
+
+debugVar() {
+	cat <<- EOF
+	DEBUG:
+	turdFile: $turdFile
+	symCor  : $symCor
+	symInW  : $symInW
+	symWro  : $symWro
+
+	-- other flags --
+	scrDir     : $scrDir
+	toNewPreset: $toNewPreset
+	toClipboard: $toClipboard
+	EOF
+
+}
+
+newPreset() {
+	[[ "$#" -lt 3 ]] && echo "usage: newPreset [correct emoji] [in-word emoji] [incorrect emoji]" && exit 1	
+	for arg in "$@"; do [[ -z "$arg" ]] && printf "newPreset: error: not enough emojis were received to save\n$usage" && exit 1; done
+	cat <<- EOF > "$scrDir/preset"
+	#!/bin/bash
+	## preset for turdle to source new emojis from
+	symCor="$1"
+	symInW="$2"
+	symWro="$3"
+	EOF
+}
+
+loadPreset() {
+	[[ ! -f "$scrDir/preset" ]] && echo "error: no preset could be found." && exit 1
+
+	if ! . "$scrDir/preset"; then echo "error: could not source preset!" && exit 1; fi
+}
+
+main() {
+	# have a place to put things
+	#[[ ! -f "$(dirname $0) "]] && mkdir 
+	# collect turds
+	while [[ "$#" -gt 0 ]]; do
+		case "$1" in
+			## processes emoji substitutions; do not change
+			"--correct="*) symCor="${1#*=}" ;;
+			"--in-word="*) symInW="${1#*=}" ;;
+			"--incorrect="*|"--wrong="*) symWro="${1#*=}" ;;
+			
+			# wordle is copied to clipboard and you don't want to use a file
+			"--clipboard") getClipboard pull ;;
+			
+			# replace copied wordle with our own in clipboard
+			"--copy-result") toClipboard=1 ;;
+		
+			# print the result
+			"--print-result") toOutput=1 ;;
+
+			# load a saved preset to use particular emojis without needing to specify every time
+			## use --new-preset to make one
+			"--load-preset") xLoadPreset=1 ;; 
+
+			# save your emoji choices as default for next time
+			## previous preset WILL be overwritten when invoking this flag!
+			"--new-preset") xNewPreset=1 ;; 
+			
+			# directory for files to go in (wordle to convert, emoji replacement preset, etc.)
+			"--script-dir"*|"--scr-dir"*) scrDir="${1#*=}" ;;
+
+			#  ';' at the end executes if $1 is a file (if statement not matched)
+			*) [[ ! -f "$1" ]] && printf "error: unrecognized argument: $1.\nIf you are specifying a file with wordle results, please make sure it exists or try using a full path.\n" && exit 1; turdFile="$1"
+		esac; shift
+	done
+
+	# make sure we have a directory for script files
+	# if it is empty by this point, --script-dir was not specified
+	if [[ -z "$scrDir" ]]; then
+		scrDir="$( cd -- "$(dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)/turdle.d"
+		if ! mkdir -p "$scrDir"; then echo "error: could not create a script directory at $scrDir"; fi
+	else
+		[ ! -d "$scrDir" ] && echo "error: specified script directory $fileDir does not exist!"
+	fi
+	
+	# only deal with presets after exhausting all options to fill scrDir
+	[[ "$xLoadPreset" -eq 1 ]] && loadPreset	
+	[[ "$xNewPreset" -eq 1 ]] && newPreset "$symCor" "$symInW" "$symWro"
+
+	# remove me!
+	#debugVar
+
+
+	## this needs rethunk!
+	if [[ ! -z "$turdFile" ]]; then
+		## file-based
+		# rewrite emojis & push to file
+		sed -i "s/🟩/$symCor/g;s/🟨/$symInW/g;s/⬛/$symWro/g" "$turdFile"
+		[[ "$toOutput" -eq 1 ]] && cat "$turdFile"
+		[[ "$toClipboard" -eq 1 ]] && clippedTurd="$(cat $turdFile)" &&  getClipboard push
+	else
+		## clipboard-based
+		clippedTurd="$(sed "s/🟩/$symCor/g;s/🟨/$symInW/g;s/⬛/$symWro/g" <<< "$clippedTurd")"
+		[[ "$toOutput" -eq 1 ]] && echo "$clippedTurd"
+		[[ "$toClipboard" -eq 1 ]] && getClipboard push
+	fi
+
+	# let getClipboard check what tool to use when both pulling and writing to clipboard
+	# if [[ "$toClipboard" -eq 1 ]]; then getClipboard push; else cat "$turdFile"; fi
+}
+
+main "$@"
