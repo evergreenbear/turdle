@@ -26,22 +26,6 @@ getClipboard() {
 	esac
 }
 
-debugVar() {
-	cat <<- EOF
-	DEBUG:
-	turdFile: $turdFile
-	symCor  : $symCor
-	symInW  : $symInW
-	symWro  : $symWro
-
-	-- other flags --
-	scrDir     : $scrDir
-	toNewPreset: $toNewPreset
-	toClipboard: $toClipboard
-	EOF
-
-}
-
 newPreset() {
 	[[ "$#" -lt 3 ]] && echo "usage: newPreset [correct emoji] [in-word emoji] [incorrect emoji]" && exit 1	
 	for arg in "$@"; do [[ -z "$arg" ]] && printf "newPreset: error: not enough emojis were received to save\n$usage" && exit 1; done
@@ -108,10 +92,6 @@ main() {
 	# only deal with presets after exhausting all options to fill scrDir
 	[[ "$xLoadPreset" -eq 1 ]] && loadPreset	
 	[[ "$xNewPreset" -eq 1 ]] && newPreset "$symCor" "$symInW" "$symWro"
-
-	# remove me!
-	#debugVar
-
 
 	## this needs rethunk!
 	if [[ ! -z "$turdFile" ]]; then
